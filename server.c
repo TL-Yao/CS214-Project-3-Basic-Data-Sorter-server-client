@@ -8,8 +8,26 @@ row* data;
 int is_fir = 0;
 int size_data;
 int count = 0;
+int num_rows = -1;
+int target_col = -1;
 pthread_mutex_t lock;
 pthread_mutex_t lock1;
+
+char *trim(char *word, int index)
+{
+  char *end;
+  while(isspace((unsigned char)*word)){
+	word++;
+  }
+  if(*word == 0)
+    return word;
+  end = word + index;
+  while(end > word && isspace((unsigned char)*end)) {
+	  end--;
+  }
+  *(end+1) = 0;
+  return word;
+}
 
 char** tokenizer(char* line, size_t num_col){
     
@@ -103,55 +121,61 @@ char** tokenizer(char* line, size_t num_col){
 }
 
 
-void sort(void* new_socket){
+void *sort(void* new_socket){
 
     int* socketptr;
     socketptr = (int*)new_socket;
     int socket = *socketptr;
 
     char* buffer = (char*)malloc(10000);
-    int num_row;
-    int target_col;
 
     //get the number of row;
     read(socket, buffer, 10000);
     buffer[strlen(buffer)] = '\n';
-    sscanf(buffer, "%d", num_row);
+    
+    /*if(num_rows == -1){
+        sscanf(buffer, "%d", num_rows);
+    }
     bzero(buffer, 10000);
+	*/
+	num_rows = 3;
 
     //get the sort colume;
     read(socket, buffer, 10000);
     buffer[strlen(buffer)] = '\n';
-    sscanf(buffer, "%d", target_col);
+    if(target_col == -1){
+        sscanf(buffer, "%d", target_col);
+    }
     bzero(buffer, 10000);
 
     //malloc or realloc the data; 
     pthread_mutex_lock(&lock1);
     if(is_fir == 0){
-        data = (row*)malloc((num_row + 1) * sizeof(row));
-        size_data = num_row + 1;
+        data = (row*)malloc((num_rows + 1) * sizeof(row));
+        size_data = num_rows + 1;
         is_fir = 1;
     }else{
         row* dataptr;
-        dataptr = (row*) realloc (data, sizeof(row) * (size_data + num_row + 1));
+        dataptr = (row*) realloc (data, sizeof(row) * (size_data + num_rows + 1));
         data = dataptr;
-        size_data += num_row + 1;
+        size_data += num_rows + 1;
     }
     pthread_mutex_unlock(&lock1);
 
     //receive the rest of lines;
     int i = 0;
-    while(i < num_row){
+    while(i < num_rows){
         read(socket, buffer, 10000);
         buffer[strlen(buffer)] = '\n';
 
         //store buffer to row* data;
         char** row_token = tokenizer(buffer, 28);
+
+        pthread_mutex_lock(&lock);        
         data[count].row_token = row_token;
         data[count].row_text = (char*)malloc(strlen(buffer + 1));
         strcpy(data[count].row_text, buffer);
 
-        pthread_mutex_lock(&lock);
         count++; 
         pthread_mutex_unlock(&lock);
         i++;
@@ -161,11 +185,14 @@ void sort(void* new_socket){
 void send_data(int sock){
     
     int sent; 
-
+    
+    //mergeSort(data, target_col, num_rows);
+    
     //send the row number;
     char num_row[20];
     sprintf(num_row, "%d", count);
     sent =  write(sock, num_row, 20);
+    
     if (sent < 0){
  		printf("Failed to send the row number\n");
     }
@@ -173,7 +200,7 @@ void send_data(int sock){
     //send the data;
     int i = 0;
     char buffer[2056];
-    while(i < num_row){
+    while(i < num_rows){
         //prepare for sending;
         strcpy(buffer, data[i].row_text);//copy data to buffer;
         buffer[strlen(buffer) - 1] = '\000';
@@ -214,7 +241,7 @@ int main(int argc, char** argv){
     server.sin_port = htons(8885);// depends on user input;
 
     //bind
-    if(bind(socket_desc, (struct sockadd*)&server, sizeof(server)) < 0){
+    if(bind(socket_desc, (struct sockaddr*)&server, sizeof(server)) < 0){
         puts("bind falied\n");
     }
 
