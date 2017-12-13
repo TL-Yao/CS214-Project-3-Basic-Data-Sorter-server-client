@@ -127,24 +127,23 @@ void *sort(void* new_socket){
     socketptr = (int*)new_socket;
     int socket = *socketptr;
 
-    char* buffer = (char*)malloc(10000);
-
+    char buffer[10000]; 
+    bzero(buffer, 10000);
     //get the number of row;
-    read(socket, buffer, 10000);
-    buffer[strlen(buffer)] = '\n';
+    read(socket, buffer, 4096);
     
-    /*if(num_rows == -1){
-        sscanf(buffer, "%d", num_rows);
+    if(num_rows == -1){
+        sscanf(buffer, "%d", &num_rows);
+	printf("receive: %s\n", buffer);
     }
     bzero(buffer, 10000);
-	*/
-	num_rows = 3;
+    
 
     //get the sort colume;
-    read(socket, buffer, 10000);
-    buffer[strlen(buffer)] = '\n';
+    read(socket, buffer, 2);
     if(target_col == -1){
-        sscanf(buffer, "%d", target_col);
+        sscanf(buffer, "%d", &target_col);
+	printf("receive: %s\n", buffer);
     }
     bzero(buffer, 10000);
 
@@ -152,12 +151,20 @@ void *sort(void* new_socket){
     pthread_mutex_lock(&lock1);
     if(is_fir == 0){
         data = (row*)malloc((num_rows + 1) * sizeof(row));
+	if(!data){
+	   printf("fail to malloc");
+	   exit(1);
+	}
         size_data = num_rows + 1;
         is_fir = 1;
     }else{
         row* dataptr;
         dataptr = (row*) realloc (data, sizeof(row) * (size_data + num_rows + 1));
-        data = dataptr;
+        if(!dataptr){
+	  printf("fail to realloc");
+	  exit(1);
+	}
+	data = dataptr;
         size_data += num_rows + 1;
     }
     pthread_mutex_unlock(&lock1);
@@ -165,10 +172,13 @@ void *sort(void* new_socket){
     //receive the rest of lines;
     int i = 0;
     while(i < num_rows){
-        read(socket, buffer, 10000);
+        read(socket, buffer, 4096);
+	printf("receive: %s\n", buffer);
         buffer[strlen(buffer)] = '\n';
+	bzero(buffer, 4096);
 
         //store buffer to row* data;
+        /*
         char** row_token = tokenizer(buffer, 28);
 
         pthread_mutex_lock(&lock);        
@@ -178,6 +188,7 @@ void *sort(void* new_socket){
 
         count++; 
         pthread_mutex_unlock(&lock);
+        */
         i++;
     }
 }
@@ -238,7 +249,7 @@ int main(int argc, char** argv){
     //initialize the sockaddr_in;
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = INADDR_ANY;
-    server.sin_port = htons(8885);// depends on user input;
+    server.sin_port = htons(8878);// depends on user input;
 
     //bind
     if(bind(socket_desc, (struct sockaddr*)&server, sizeof(server)) < 0){
@@ -279,9 +290,9 @@ int main(int argc, char** argv){
 
         //if signal is 's', it is sending file, if it is 'd', it finished sending files;
         char signal[2];
-        read(new_socket, signal, 2);
+        read(new_socket, signal, 1);
         signal[strlen(signal)] = '\n';
-        
+        printf("receive: %s\n", signal);
         if(strcmp(signal, "s")){
     	    pthread_create(&tid[i], NULL, sort, &new_socket); //create the thread;
         }else if(strcmp(signal, "d")){
@@ -292,7 +303,7 @@ int main(int argc, char** argv){
                 pthread_join(tid[j], NULL);
                 j++;
             }
-            send_data(new_socket);
+            //send_data(new_socket);
         } 
         bzero(signal, 2); 
         i++;      
