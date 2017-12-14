@@ -122,13 +122,15 @@ char** tokenizer(char* line, size_t num_col){
 
 
 void *sort(void* new_socket){
-
+    FILE* fp = fopen("test.txt", "w");
     int* socketptr;
     socketptr = (int*)new_socket;
     int socket = *socketptr;
+    int bufferSize = 10000;
 
-    char buffer[10000]; 
-    bzero(buffer, 10000);
+    char buffer[bufferSize];
+    char* fileData; 
+    bzero(buffer, bufferSize);
     //get the number of row;
     read(socket, buffer, 4096);
     
@@ -136,7 +138,7 @@ void *sort(void* new_socket){
         sscanf(buffer, "%d", &num_rows);
 	printf("receive: %s\n", buffer);
     }
-    bzero(buffer, 10000);
+    bzero(buffer, bufferSize);
     
 
     //get the sort colume;
@@ -145,37 +147,60 @@ void *sort(void* new_socket){
         sscanf(buffer, "%d", &target_col);
 	printf("receive: %s\n", buffer);
     }
-    bzero(buffer, 10000);
+    bzero(buffer, bufferSize);
 
-    //malloc or realloc the data; 
+    //get the total bytes;
+    int totByte = 0;
+    read(socket, buffer, 100);
+    sscanf(buffer, "%d", &totByte);
+	printf("receive: %s\n", buffer);
+    bzero(buffer, bufferSize);
+    
+
+	//malloc or realloc for row* data; 
     pthread_mutex_lock(&lock1);
     if(is_fir == 0){
-        data = (row*)malloc((num_rows + 1) * sizeof(row));
-	if(!data){
-	   printf("fail to malloc");
-	   exit(1);
-	}
+        data = (row*) malloc((num_rows + 1) * sizeof(row));
+        
+	    if(!data){
+	        printf("fail to malloc data");
+	        exit(1);
+	    }
+
+        fileData = (char*) malloc((totByte + 1) * sizeof(char));
+        memset(fileData, 0, totByte + 1);
+        if(!data){
+	        printf("fail to malloc fileData");
+	        exit(1);
+	    }
+
         size_data = num_rows + 1;
         is_fir = 1;
     }else{
         row* dataptr;
         dataptr = (row*) realloc (data, sizeof(row) * (size_data + num_rows + 1));
         if(!dataptr){
-	  printf("fail to realloc");
-	  exit(1);
-	}
-	data = dataptr;
+	        printf("fail to realloc");
+	        exit(1);
+	    }
+	    data = dataptr;
         size_data += num_rows + 1;
     }
     pthread_mutex_unlock(&lock1);
 
     //receive the rest of lines;
     int i = 0;
-    while(i < num_rows){
-        read(socket, buffer, 4096);
-	printf("receive: %s\n", buffer);
-        buffer[strlen(buffer)] = '\n';
-	bzero(buffer, 4096);
+    int small = 0;
+    while(totByte - i > bufferSize){
+	small = 1;        
+	read(socket, buffer, bufferSize);
+	    printf("receive: %s\n", buffer);
+	if(i == 0){
+		strcpy(fileData, buffer);	
+	}else{
+		strcat(fileData, buffer);
+	}
+	    bzero(buffer, bufferSize);
 
         //store buffer to row* data;
         /*
@@ -189,8 +214,18 @@ void *sort(void* new_socket){
         count++; 
         pthread_mutex_unlock(&lock);
         */
-        i++;
+        i += bufferSize;
     }
+
+	read(socket, buffer, totByte - i);
+	printf("receive: %s\n", buffer);
+	fflush(stdout);
+	if(small == 0){
+		strcpy(fileData, buffer);
+	} else {
+		strcat(fileData,buffer);
+	}	
+	bzero(buffer, bufferSize);
 }
 
 void send_data(int sock){
@@ -249,7 +284,7 @@ int main(int argc, char** argv){
     //initialize the sockaddr_in;
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = INADDR_ANY;
-    server.sin_port = htons(8878);// depends on user input;
+    server.sin_port = htons(8879);// depends on user input;
 
     //bind
     if(bind(socket_desc, (struct sockaddr*)&server, sizeof(server)) < 0){
